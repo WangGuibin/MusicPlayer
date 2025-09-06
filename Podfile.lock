@@ -1,0 +1,34 @@
+PODS:
+  - CocoaAsyncSocket (7.6.5)
+  - KTVHTTPCache (3.1.0):
+    - CocoaAsyncSocket
+  - Masonry (1.1.0)
+  - SDWebImage (5.21.1):
+    - SDWebImage/Core (= 5.21.1)
+  - SDWebImage/Core (5.21.1)
+  - YYModel (1.0.4)
+
+DEPENDENCIES:
+  - KTVHTTPCache
+  - Masonry
+  - SDWebImage
+  - YYModel
+
+SPEC REPOS:
+  trunk:
+    - CocoaAsyncSocket
+    - KTVHTTPCache
+    - Masonry
+    - SDWebImage
+    - YYModel
+
+SPEC CHECKSUMS:
+  CocoaAsyncSocket: 065fd1e645c7abab64f7a6a2007a48038fdc6a99
+  KTVHTTPCache: a1f3c9c217be5af6985b240d660db262a0cbc18a
+  Masonry: 678fab65091a9290e40e2832a55e7ab731aad201
+  SDWebImage: f29024626962457f3470184232766516dee8dfea
+  YYModel: 2a7fdd96aaa4b86a824e26d0c517de8928c04b30
+
+PODFILE CHECKSUM: 9dc1f77a256859eddcd393bce7d9a204b4543e70
+
+COCOAPODS: 1.16.2

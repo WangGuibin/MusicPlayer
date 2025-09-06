@@ -19,7 +19,7 @@ on:
 jobs:
   build-and-release:
     # Prefer Apple Silicon hosted runner. 
-    runs-on: macos-14-arm64
+    runs-on: macos-15-arm64
 
     env:
       WORKSPACE: MusicPlayer.xcworkspace   

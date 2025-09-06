@@ -1,0 +1,130 @@
+name: iOS CI/CD (Apple Silicon)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create (e.g. v1.0.0). Leave blank to auto-generate.'
+        required: false
+      release_name:
+        description: 'Release title (optional)'
+        required: false
+      release_body:
+        description: 'Release notes (optional)'
+        required: false
+
+jobs:
+  build-and-release:
+    # Prefer Apple Silicon hosted runner. 
+    runs-on: macos-14-arm64
+
+    env:
+      WORKSPACE: MusicPlayer.xcworkspace   
+      SCHEME: MusicPlayer                        
+      CONFIGURATION: Release
+      BUILD_DIR: build
+      APP_NAME: MusicPlayer                       
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Ruby (for CocoaPods) and tools
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.1
+
+      - name: Install CocoaPods and xcpretty
+        run: |
+          set -e
+          # 在 M 系列上安装 ffi + cocoapods 更可靠
+          gem install ffi --no-document || true
+          gem install cocoapods --no-document || true
+          gem install xcpretty --no-document || true
+          pod --version || true
+
+      - name: Pod install
+        working-directory: ./
+        run: |
+          set -o pipefail
+          # 使用 arch -arm64 确保在 Apple Silicon 上使用 arm64 架构的 Ruby/CocoaPods（如需要）
+          arch -arm64 pod install --repo-update
+
+      - name: Clean & Build .app (no code signing)
+        run: |
+          set -o pipefail
+          echo "Clean..."
+          xcodebuild clean -workspace "${WORKSPACE}" -scheme "${SCHEME}" -configuration "${CONFIGURATION}" -sdk iphoneos -derivedDataPath "${BUILD_DIR}" | xcpretty || true
+          echo "Build (unsigned)..."
+          xcodebuild build -workspace "${WORKSPACE}" -scheme "${SCHEME}" -configuration "${CONFIGURATION}" -sdk iphoneos -derivedDataPath "${BUILD_DIR}" CODE_SIGNING_ALLOWED=NO | xcpretty
+
+      - name: Locate .app and package to .ipa (unsigned)
+        run: |
+          set -e
+          # 查找生成的 .app（取第一个匹配）
+          APP_PATH=$(find "${BUILD_DIR}" -name "*.app" | grep -v "\(Test\|Tests\)" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found in ${BUILD_DIR}"
+            exit 1
+          fi
+          echo "Found app: $APP_PATH"
+          # 创建 Payload 并打包为 .ipa（注意：这是未签名的 ipa）
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" "Payload/"
+          IPA_NAME="${APP_NAME}.ipa"
+          /usr/bin/zip -r -y "${IPA_NAME}" Payload
+          ls -lh "${IPA_NAME}"
+          echo "IPA created: ${IPA_NAME}"
+
+      - name: Prepare release variables
+        id: vars
+        run: |
+          # 设置 TAG、RELEASE_NAME、RELEASE_BODY（workflow_dispatch 可传入）
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="v0.0.${{ github.run_number }}"
+          fi
+          RELEASE_NAME="${{ github.event.inputs.release_name }}"
+          if [ -z "$RELEASE_NAME" ]; then
+            RELEASE_NAME="$TAG"
+          fi
+          RELEASE_BODY="${{ github.event.inputs.release_body }}"
+          if [ -z "$RELEASE_BODY" ]; then
+            RELEASE_BODY="Automated build: $TAG (${GITHUB_RUN_ID})"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "RELEASE_NAME=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "RELEASE_BODY=$RELEASE_BODY" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        id: release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_TOKEN }}
+        with:
+          tag_name: ${{ steps.vars.outputs.TAG }}
+          release_name: ${{ steps.vars.outputs.RELEASE_NAME }}
+          body: ${{ steps.vars.outputs.RELEASE_BODY }}
+          draft: false
+          prerelease: false
+
+      - name: Upload .ipa to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_TOKEN }}
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          asset_path: ./MusicPlayer.ipa
+          asset_name: ${{ env.APP_NAME }}.ipa
+          asset_content_type: application/octet-stream
+
+      - name: Show Release URL
+        run: |
+          echo "Release created: ${{ steps.release.outputs.html_url }}"

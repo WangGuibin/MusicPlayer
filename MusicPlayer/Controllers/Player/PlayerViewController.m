@@ -15,9 +15,12 @@
 #import "SpectrumView.h"
 #import "BufferedProgressView.h"
 #import "MusicImageCacheManager.h"
+#import "PipLyricsManager.h"
+#import "MusicSettingsManager.h"
 #import <Masonry/Masonry.h>
 #import <SDWebImage/UIImageView+WebCache.h>
 #import <QuartzCore/QuartzCore.h>
+#import "MusicSettingsViewController.h"
 
 // Simple class to hold parsed lyric lines
 @interface LyricLine : NSObject
@@ -76,6 +79,10 @@
 @property (nonatomic, strong) UIImageView *backgroundSnapshotView;
 @property (nonatomic, strong) UIImage *cachedBackgroundSnapshot;
 
+// Picture-in-Picture properties
+@property (nonatomic, strong) NSTimer *pipLyricsUpdateTimer;
+@property (nonatomic, copy) NSString *currentPipLyrics;
+
 @end
 
 @implementation PlayerViewController
@@ -122,6 +129,13 @@
 - (void)dealloc {
     [self removePlayerObservers];
     [_displayLink invalidate];
+    [self stopPipLyricsUpdate];
+    
+    // 清理 PiP 相关资源
+    PipLyricsManager *pipManager = [PipLyricsManager shareTool];
+    if (pipManager.isInPip) {
+        [pipManager stopPictureInPicture];
+    }
 }
 
 #pragma mark - Observers
@@ -206,7 +220,6 @@
     self.dismissButton = [self createButtonWithImageName:@"chevron.down" target:self action:@selector(dismissTapped:)];
     self.addToPlaylistButton = [self createButtonWithImageName:@"plus.circle" target:self action:@selector(addToPlaylistButtonTapped:)];
     self.pipButton = [self createButtonWithImageName:@"pip" target:self action:@selector(pipButtonTapped:)];
-    self.pipButton.hidden = YES;
     self.titleLabel = [self createLabelWithFontSize:18 weight:UIFontWeightBold alignment:NSTextAlignmentCenter];
     self.artistLabel = [self createLabelWithFontSize:14 weight:UIFontWeightMedium alignment:NSTextAlignmentCenter];
     self.artistLabel.textColor = [UIColor lightGrayColor];
@@ -460,13 +473,25 @@
     self.titleLabel.text = track.name;
     self.artistLabel.text = [track.artist componentsJoinedByString:@", "];
     
-    // Update PiP button state
-    if ([[MusicPlayerController sharedController] isPiPModeActive]) {
-        [self.pipButton setImage:[UIImage systemImageNamed:@"pip.fill"] forState:UIControlStateNormal];
-        self.pipButton.tintColor = [UIColor colorWithRed:0.3 green:0.8 blue:0.4 alpha:1.0];
+    // Update PiP button state and visibility
+    MusicSettingsManager *settingsManager = [MusicSettingsManager sharedManager];
+    if (settingsManager.pipLyricsEnabled) {
+        self.pipButton.hidden = NO;
+        self.pipButton.alpha = 1.0;
+        
+        PipLyricsManager *pipManager = [PipLyricsManager shareTool];
+        if (pipManager.isInPip) {
+            [self.pipButton setImage:[UIImage systemImageNamed:@"pip.fill"] forState:UIControlStateNormal];
+            self.pipButton.tintColor = [UIColor colorWithRed:0.3 green:0.8 blue:0.4 alpha:1.0];
+        } else {
+            [self.pipButton setImage:[UIImage systemImageNamed:@"pip"] forState:UIControlStateNormal];
+            self.pipButton.tintColor = [UIColor whiteColor];
+        }
     } else {
+        // 当设置关闭时，隐藏按钮或使其半透明
+        self.pipButton.alpha = 0.5;
         [self.pipButton setImage:[UIImage systemImageNamed:@"pip"] forState:UIControlStateNormal];
-        self.pipButton.tintColor = [UIColor whiteColor];
+        self.pipButton.tintColor = [UIColor lightGrayColor];
     }
     
     // Reset UI
@@ -523,8 +548,18 @@
     if (track.lyric_id) {
         [[MusicAPIManager sharedManager] getLyricsWithLyricId:track.lyric_id source:track.source completion:^(NSString * _Nullable lyrics, NSString * _Nullable translatedLyrics, NSError * _Nullable error) {
             if (lyrics) {
+                NSLog(@"🎵 Raw lyrics received: %@", [lyrics substringToIndex:MIN(200, lyrics.length)]);
                 self.lyrics = [self parseLyrics:lyrics];
+                NSLog(@"🎵 Parsed %ld lyric lines", self.lyrics.count);
+                if (self.lyrics.count > 0) {
+                    NSLog(@"🎵 First lyric: Time:%.2f Text:%@", self.lyrics[0].time, self.lyrics[0].text);
+                    if (self.lyrics.count > 1) {
+                        NSLog(@"🎵 Second lyric: Time:%.2f Text:%@", self.lyrics[1].time, self.lyrics[1].text);
+                    }
+                }
                 [self.lyricsTableView reloadData];
+            } else if (error) {
+                NSLog(@"🎵 Failed to load lyrics: %@", error.localizedDescription);
             }
         }];
     }
@@ -626,17 +661,36 @@
         return;
     }
     
-    if ([player isPiPModeActive]) {
-        [player disablePiPMode];
+    // 检查设置中是否启用了画中画歌词功能
+    if (![MusicSettingsManager sharedManager].pipLyricsEnabled) {
+        [self showPipDisabledAlert];
+        return;
+    }
+    
+    PipLyricsManager *pipManager = [PipLyricsManager shareTool];
+    
+    if (pipManager.isInPip) {
+        // 停止画中画模式
+        [pipManager stopPictureInPicture];
+        [self stopPipLyricsUpdate];
+        
         [sender setImage:[UIImage systemImageNamed:@"pip"] forState:UIControlStateNormal];
         sender.tintColor = [UIColor whiteColor];
+        
+        NSLog(@"🎵 Picture-in-Picture mode disabled using PipLyricsManager");
     } else {
-        [player enablePiPMode];
+        // 启用画中画模式
+        [self setupPipLyricsWithCurrentTrack];
+        
         [sender setImage:[UIImage systemImageNamed:@"pip.fill"] forState:UIControlStateNormal]; 
         sender.tintColor = [UIColor colorWithRed:0.3 green:0.8 blue:0.4 alpha:1.0];
         
-        // Optional: Dismiss the full screen player after enabling PiP
-        [self dismissViewControllerAnimated:YES completion:nil];
+        NSLog(@"🎵 Picture-in-Picture mode enabled using PipLyricsManager");
+        
+        // 延迟dismiss，让PiP有时间启动
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self dismissViewControllerAnimated:YES completion:nil];
+        });
     }
 }
 
@@ -1298,6 +1352,124 @@
     return [NSString stringWithFormat:@"%02ld:%02ld", (long)minutes, (long)seconds];
 }
 
+#pragma mark - Picture-in-Picture Management
+
+- (void)setupPipLyricsWithCurrentTrack {
+    MusicPlayerController *player = [MusicPlayerController sharedController];
+    MusicModel *currentTrack = player.currentTrack;
+    
+    if (!currentTrack) {
+        NSLog(@"⚠️ No current track for PiP mode");
+        return;
+    }
+    
+    NSLog(@"🎵 Setting up PiP lyrics for track: %@", currentTrack.name);
+    
+    PipLyricsManager *pipManager = [PipLyricsManager shareTool];
+    
+    // 配置 PipLyricsManager 
+    pipManager.pipType = PipLyricsTypeSingleLine; // 单行歌词展示
+    pipManager.textColor = [UIColor whiteColor];
+    pipManager.backgroundColor = [UIColor blackColor];
+    pipManager.alignment = NSTextAlignmentCenter;
+    pipManager.textFont = [UIFont boldSystemFontOfSize:18];
+    pipManager.lineSpacing = 8.0;
+    pipManager.preferredFramesPerSecond = 30;
+    
+    // 设置初始歌词文本
+    NSString *initialLyrics = [self getCurrentLyricsText] ?: [NSString stringWithFormat:@"🎵 %@ - %@", 
+                                                              currentTrack.name, 
+                                                              [currentTrack.artist componentsJoinedByString:@", "]];
+    pipManager.text = initialLyrics;
+    
+    NSLog(@"🎵 Initial lyrics: %@", initialLyrics);
+    NSLog(@"🎵 PipType: %ld", (long)pipManager.pipType);
+    
+    // 显示歌词在主视图中（为了设置 PiP）
+    [pipManager showLyricsWithSuperView:self.view];
+    
+    // 延迟启动 PiP 以确保设置完成
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        NSLog(@"🎵 Attempting to start PiP...");
+        [pipManager startPictureInPicture];
+        [self startPipLyricsUpdate];
+    });
+}
+
+- (void)startPipLyricsUpdate {
+    [self stopPipLyricsUpdate]; // 先停止现有的定时器
+    
+    // 创建定时器定期更新歌词
+    self.pipLyricsUpdateTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
+                                                                 target:self
+                                                               selector:@selector(updatePipLyrics)
+                                                               userInfo:nil
+                                                                repeats:YES];
+}
+
+- (void)stopPipLyricsUpdate {
+    if (self.pipLyricsUpdateTimer) {
+        [self.pipLyricsUpdateTimer invalidate];
+        self.pipLyricsUpdateTimer = nil;
+    }
+}
+
+- (void)updatePipLyrics {
+    PipLyricsManager *pipManager = [PipLyricsManager shareTool];
+    NSString *currentLyrics = [self getCurrentLyricsText];
+    // 添加调试日志
+    MusicPlayerController *player = [MusicPlayerController sharedController];
+    NSLog(@"🎵 PiP Update - Time: %.2f, Lyrics: %@, Count: %ld", 
+          player.currentTime, currentLyrics ?: @"(nil)", self.lyrics.count);
+    
+    // 只有歌词发生变化时才更新，避免不必要的刷新
+    if (![currentLyrics isEqualToString:self.currentPipLyrics]) {
+        [pipManager updateLyricsDisplayWithText:currentLyrics ?: @"🎵 暂无歌词"];
+        self.currentPipLyrics = currentLyrics;
+        NSLog(@"🎵 PiP Lyrics Updated: %@", currentLyrics ?: @"🎵 暂无歌词");
+    }
+}
+
+- (NSString *)getCurrentLyricsText {
+    MusicPlayerController *player = [MusicPlayerController sharedController];
+    NSTimeInterval currentTime = player.currentTime;
+    
+    if (self.lyrics.count == 0) {
+        return nil;
+    }
+    
+    // 查找当前时间对应的歌词
+    for (NSInteger i = self.lyrics.count - 1; i >= 0; i--) {
+        LyricLine *lyric = self.lyrics[i];
+        if (currentTime >= lyric.time) {
+            return lyric.text.length > 0 ? lyric.text : @"♪";
+        }
+    }
+    
+    return @"♪";
+}
+
+- (void)showPipDisabledAlert {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"画中画歌词功能已关闭" 
+                                                                   message:@"请在音乐设置中开启画中画歌词功能" 
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    
+    UIAlertAction *settingsAction = [UIAlertAction actionWithTitle:@"前往设置" 
+                                                             style:UIAlertActionStyleDefault 
+                                                           handler:^(UIAlertAction * _Nonnull action) {
+        MusicSettingsViewController *vc = [MusicSettingsViewController new];
+        [self presentViewController:vc animated:YES completion:nil];
+    }];
+    
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" 
+                                                           style:UIAlertActionStyleCancel 
+                                                         handler:nil];
+    
+    [alert addAction:settingsAction];
+    [alert addAction:cancelAction];
+    
+    [self presentViewController:alert animated:YES completion:nil];
+}
 
 
 @end

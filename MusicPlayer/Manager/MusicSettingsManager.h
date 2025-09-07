@@ -34,6 +34,9 @@ typedef NS_ENUM(NSInteger, MusicQuality) {
 // Global quality
 @property (nonatomic, assign) MusicQuality globalQuality;
 
+// Picture-in-Picture settings
+@property (nonatomic, assign) BOOL pipLyricsEnabled;
+
 // Helper methods
 - (NSString *)sourceStringForSource:(MusicSource)source;
 - (NSString *)sourceDisplayNameForSource:(MusicSource)source;

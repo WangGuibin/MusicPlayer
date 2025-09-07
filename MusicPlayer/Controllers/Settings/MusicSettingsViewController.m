@@ -35,10 +35,11 @@
 - (void)setupData {
     self.settingsManager = [MusicSettingsManager sharedManager];
     
-    self.sectionTitles = @[@"默认音乐源", @"全局音质"];
+    self.sectionTitles = @[@"默认音乐源", @"全局音质", @"播放功能"];
     self.menuItems = @[
         @[@"音乐源选择"],
-        @[@"音质选择"]
+        @[@"音质选择"],
+        @[@"画中画歌词"]
     ];
 }
 
@@ -66,6 +67,13 @@
     [self dismissViewControllerAnimated:YES completion:nil];
 }
 
+- (void)switchValueChanged:(UISwitch *)sender {
+    if (sender.tag == 200) { // 画中画歌词开关 (section 2, row 0)
+        self.settingsManager.pipLyricsEnabled = sender.isOn;
+        NSLog(@"🎵 PiP Lyrics setting changed to: %@", sender.isOn ? @"Enabled" : @"Disabled");
+    }
+}
+
 #pragma mark - UITableView DataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -78,24 +86,48 @@
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     static NSString *cellIdentifier = @"SettingsCell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:cellIdentifier];
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    }
+    static NSString *switchCellIdentifier = @"SwitchSettingsCell";
     
     NSString *title = self.menuItems[indexPath.section][indexPath.row];
-    cell.textLabel.text = title;
     
-    if (indexPath.section == 0) {
-        // 音乐源选择
-        cell.detailTextLabel.text = [self.settingsManager sourceDisplayNameForSource:self.settingsManager.defaultSource];
-    } else if (indexPath.section == 1) {
-        // 音质选择
-        cell.detailTextLabel.text = [self.settingsManager qualityDisplayNameForQuality:self.settingsManager.globalQuality];
+    if (indexPath.section == 2) {
+        // 画中画歌词开关
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:switchCellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:switchCellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            
+            UISwitch *switchControl = [[UISwitch alloc] init];
+            switchControl.tag = indexPath.section * 100 + indexPath.row;
+            [switchControl addTarget:self action:@selector(switchValueChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = switchControl;
+        }
+        
+        cell.textLabel.text = title;
+        UISwitch *switchControl = (UISwitch *)cell.accessoryView;
+        switchControl.on = self.settingsManager.pipLyricsEnabled;
+        
+        return cell;
+    } else {
+        // 普通设置项
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:cellIdentifier];
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        }
+        
+        cell.textLabel.text = title;
+        
+        if (indexPath.section == 0) {
+            // 音乐源选择
+            cell.detailTextLabel.text = [self.settingsManager sourceDisplayNameForSource:self.settingsManager.defaultSource];
+        } else if (indexPath.section == 1) {
+            // 音质选择
+            cell.detailTextLabel.text = [self.settingsManager qualityDisplayNameForQuality:self.settingsManager.globalQuality];
+        }
+        
+        return cell;
     }
-    
-    return cell;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -107,6 +139,8 @@
         return @"选择默认的音乐搜索源，支持网易云音乐、酷我音乐和JOOX音乐";
     } else if (section == 1) {
         return @"选择全局音质，740和999为无损音质";
+    } else if (section == 2) {
+        return @"开启后，点击画中画按钮可以在小窗口中显示实时歌词";
     }
     return nil;
 }
@@ -120,6 +154,9 @@
         [self showSourceSelectionAlert];
     } else if (indexPath.section == 1) {
         [self showQualitySelectionAlert];
+    } else if (indexPath.section == 2) {
+        // 画中画开关行，不需要处理点击事件，由开关控件处理
+        return;
     }
 }
 

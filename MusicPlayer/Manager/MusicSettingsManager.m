@@ -9,6 +9,7 @@
 
 static NSString * const kMusicDefaultSourceKey = @"MusicDefaultSource";
 static NSString * const kMusicGlobalQualityKey = @"MusicGlobalQuality";
+static NSString * const kMusicPipLyricsEnabledKey = @"MusicPipLyricsEnabled";
 
 @implementation MusicSettingsManager
 
@@ -51,6 +52,14 @@ static NSString * const kMusicGlobalQualityKey = @"MusicGlobalQuality";
     } else {
         _globalQuality = (MusicQuality)qualityValue;
     }
+    
+    // Load PiP lyrics setting (default: YES)
+    if ([defaults objectForKey:kMusicPipLyricsEnabledKey]) {
+        _pipLyricsEnabled = [defaults boolForKey:kMusicPipLyricsEnabledKey];
+    } else {
+        // First time, set default to enabled
+        _pipLyricsEnabled = YES;
+    }
 }
 
 - (void)setDefaultSource:(MusicSource)defaultSource {
@@ -62,6 +71,12 @@ static NSString * const kMusicGlobalQualityKey = @"MusicGlobalQuality";
 - (void)setGlobalQuality:(MusicQuality)globalQuality {
     _globalQuality = globalQuality;
     [[NSUserDefaults standardUserDefaults] setInteger:globalQuality forKey:kMusicGlobalQualityKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (void)setPipLyricsEnabled:(BOOL)pipLyricsEnabled {
+    _pipLyricsEnabled = pipLyricsEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:pipLyricsEnabled forKey:kMusicPipLyricsEnabledKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
 }
 

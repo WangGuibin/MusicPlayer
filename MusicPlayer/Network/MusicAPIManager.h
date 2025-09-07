@@ -43,6 +43,11 @@ typedef void(^LyricsCompletionBlock)(NSString * _Nullable lyrics, NSString * _Nu
                       source:(NSString * _Nullable)source
                   completion:(LyricsCompletionBlock)completion;
 
+// Get lyrics by track ID
+- (void)getLyricsWithTrackId:(NSString *)trackId
+                      source:(NSString * _Nullable)source
+                  completion:(void(^)(NSString * _Nullable lyrics, NSError * _Nullable error))completion;
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -263,6 +263,11 @@
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(viewTapped)];
     [self.view addGestureRecognizer:tap];
     
+    // Add long press gesture for PiP mode
+    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(viewLongPressed:)];
+    longPress.minimumPressDuration = 0.8;
+    [self.view addGestureRecognizer:longPress];
+    
     // Add pan gesture for interactive transition
     self.panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePanGesture:)];
     self.panGesture.delegate = self;
@@ -333,6 +338,24 @@
 
 - (void)viewTapped {
     [self presentFullScreenPlayer];
+}
+
+- (void)viewLongPressed:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        // Provide haptic feedback
+        if (@available(iOS 10.0, *)) {
+            UIImpactFeedbackGenerator *feedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+            [feedbackGenerator impactOccurred];
+        }
+        
+        // Toggle PiP mode
+        MusicPlayerController *player = [MusicPlayerController sharedController];
+        if ([player isPiPModeActive]) {
+            [player disablePiPMode];
+        } else {
+            [player enablePiPMode];
+        }
+    }
 }
 
 - (void)presentFullScreenPlayer {

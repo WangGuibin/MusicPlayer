@@ -240,4 +240,15 @@ static NSString * const kBaseURL = @"https://music-api.gdstudio.xyz/api.php";
     [task resume];
 }
 
+- (void)getLyricsWithTrackId:(NSString *)trackId
+                      source:(NSString *)source
+                  completion:(void(^)(NSString * _Nullable lyrics, NSError * _Nullable error))completion {
+    // For simplicity, use trackId as lyricId since they're often the same in music APIs
+    [self getLyricsWithLyricId:trackId source:source completion:^(NSString * _Nullable lyrics, NSString * _Nullable translatedLyrics, NSError * _Nullable error) {
+        if (completion) {
+            completion(lyrics, error);
+        }
+    }];
+}
+
 @end

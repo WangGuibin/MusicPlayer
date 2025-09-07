@@ -8,6 +8,8 @@
 #import "MusicPlayerController.h"
 #import "MusicAPIManager.h"
 #import "MusicSettingsManager.h"
+#import "LockScreenMusicController.h"
+#import "PiPLyricsViewController.h"
 #import <AVFoundation/AVFoundation.h>
 #import <KTVHTTPCache/KTVHTTPCache.h>
 
@@ -86,6 +88,9 @@ NSString * const MusicPlayerBufferedProgressUserInfoKey = @"bufferedProgress";
                                                  selector:@selector(handleSeekToTime:) 
                                                      name:@"SeekToTime" 
                                                    object:nil];
+        
+        // Initialize lock screen controller to ensure it starts observing
+        [LockScreenMusicController sharedController];
     }
     return self;
 }
@@ -392,6 +397,22 @@ NSString * const MusicPlayerBufferedProgressUserInfoKey = @"bufferedProgress";
             [self playNextTrack];
             break;
     }
+}
+
+#pragma mark - Picture-in-Picture Controls
+
+- (void)enablePiPMode {
+    [[PiPLyricsViewController sharedController] startPiPMode];
+    NSLog(@"🎵 Picture-in-Picture mode enabled");
+}
+
+- (void)disablePiPMode {
+    [[PiPLyricsViewController sharedController] stopPiPMode];
+    NSLog(@"🎵 Picture-in-Picture mode disabled");
+}
+
+- (BOOL)isPiPModeActive {
+    return [[PiPLyricsViewController sharedController] isPiPActive];
 }
 
 @end

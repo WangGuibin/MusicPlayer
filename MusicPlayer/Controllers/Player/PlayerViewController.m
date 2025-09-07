@@ -37,6 +37,7 @@
 
 @property (nonatomic, strong) UIButton *dismissButton;
 @property (nonatomic, strong) UIButton *addToPlaylistButton;
+@property (nonatomic, strong) UIButton *pipButton;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *artistLabel;
 
@@ -204,6 +205,8 @@
     // Top Controls
     self.dismissButton = [self createButtonWithImageName:@"chevron.down" target:self action:@selector(dismissTapped:)];
     self.addToPlaylistButton = [self createButtonWithImageName:@"plus.circle" target:self action:@selector(addToPlaylistButtonTapped:)];
+    self.pipButton = [self createButtonWithImageName:@"pip" target:self action:@selector(pipButtonTapped:)];
+    self.pipButton.hidden = YES;
     self.titleLabel = [self createLabelWithFontSize:18 weight:UIFontWeightBold alignment:NSTextAlignmentCenter];
     self.artistLabel = [self createLabelWithFontSize:14 weight:UIFontWeightMedium alignment:NSTextAlignmentCenter];
     self.artistLabel.textColor = [UIColor lightGrayColor];
@@ -266,6 +269,7 @@
     // Add all subviews
     [self.view addSubview:self.dismissButton];
     [self.view addSubview:self.addToPlaylistButton];
+    [self.view addSubview:self.pipButton];
     [self.view addSubview:self.titleLabel];
     [self.view addSubview:self.artistLabel];
     [self.view addSubview:self.lyricPreviewLine1];
@@ -300,6 +304,12 @@
     [self.addToPlaylistButton mas_makeConstraints:^(MASConstraintMaker *make) {
         make.top.equalTo(self.view.mas_safeAreaLayoutGuideTop).offset(10);
         make.right.equalTo(self.view.mas_safeAreaLayoutGuideRight).offset(-20);
+        make.width.height.equalTo(@44);
+    }];
+
+    [self.pipButton mas_makeConstraints:^(MASConstraintMaker *make) {
+        make.top.equalTo(self.view.mas_safeAreaLayoutGuideTop).offset(10);
+        make.right.equalTo(self.addToPlaylistButton.mas_left).offset(-10);
         make.width.height.equalTo(@44);
     }];
 
@@ -450,6 +460,15 @@
     self.titleLabel.text = track.name;
     self.artistLabel.text = [track.artist componentsJoinedByString:@", "];
     
+    // Update PiP button state
+    if ([[MusicPlayerController sharedController] isPiPModeActive]) {
+        [self.pipButton setImage:[UIImage systemImageNamed:@"pip.fill"] forState:UIControlStateNormal];
+        self.pipButton.tintColor = [UIColor colorWithRed:0.3 green:0.8 blue:0.4 alpha:1.0];
+    } else {
+        [self.pipButton setImage:[UIImage systemImageNamed:@"pip"] forState:UIControlStateNormal];
+        self.pipButton.tintColor = [UIColor whiteColor];
+    }
+    
     // Reset UI
     self.albumImageView.image = nil;
     self.lyricPreviewLine1.text = @"";
@@ -597,6 +616,27 @@
     } else {
         // Fallback to action sheet for older systems
         [self presentActionSheet:sender forTrack:currentTrack];
+    }
+}
+
+- (void)pipButtonTapped:(UIButton *)sender {
+    MusicPlayerController *player = [MusicPlayerController sharedController];
+    
+    if (!player.currentTrack) {
+        return;
+    }
+    
+    if ([player isPiPModeActive]) {
+        [player disablePiPMode];
+        [sender setImage:[UIImage systemImageNamed:@"pip"] forState:UIControlStateNormal];
+        sender.tintColor = [UIColor whiteColor];
+    } else {
+        [player enablePiPMode];
+        [sender setImage:[UIImage systemImageNamed:@"pip.fill"] forState:UIControlStateNormal]; 
+        sender.tintColor = [UIColor colorWithRed:0.3 green:0.8 blue:0.4 alpha:1.0];
+        
+        // Optional: Dismiss the full screen player after enabling PiP
+        [self dismissViewControllerAnimated:YES completion:nil];
     }
 }
 

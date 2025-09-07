@@ -64,6 +64,11 @@ typedef NS_ENUM(NSInteger, PlaybackMode) {
 - (void)seekToProgress:(CGFloat)progress;
 - (void)seekToTime:(NSTimeInterval)time;
 
+// Picture-in-Picture Controls
+- (void)enablePiPMode;
+- (void)disablePiPMode;
+- (BOOL)isPiPModeActive;
+
 @end
 
 NS_ASSUME_NONNULL_END
